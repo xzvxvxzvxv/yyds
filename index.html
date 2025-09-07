@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>英语单词抄写练习系统 - 幼儿版</title>
+  <link rel="stylesheet" href="styles.css">
+    <script src="recommendation.js" defer></script>
+    <script src="cloudStorage.js" defer></script>
+    <script src="websocketService.js" defer></script>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>英语单词抄写练习系统</h1>
+    <p class="description">看图记忆，听音辨识，抄写练习 - 专为二年级设计</p>
+  </header>
+
+  <div class="controls">
+    <select class="mode-selector" id="mode-selector">
+      <option value="normal">普通模式</option>
+      <option value="category">分类学习</option>
+      <option value="listening">听音选单词</option>
+      <option value="dictation">听写模式</option>
+      <option value="review">复习模式</option>
+      <option value="wordlist">单词表</option>
+      <option value="word-to-chinese">看单词选中文</option>
+      <option value="reading">阅读模式</option>
+      <option value="recommended">每日推荐学习</option>
+    </select>
+    <select class="category-selector" id="category-selector" disabled>
+      <option value="all">所有类别</option>
+      <option value="animal">动物类</option>
+      <option value="food">食物类</option>
+      <option value="daily">日常用品类</option>
+      <option value="color">颜色类</option>
+      <option value="number">数字类</option>
+      <option value="fruit">水果类</option>
+      <option value="transport">交通工具类</option>
+      <option value="body">身体部位类</option>
+      <option value="family">亲属类</option>
+      <option value="weather">天气类</option>
+      <option value="action">动作类</option>
+      <option value="emotion">情感类</option>
+    </select>
+    <button id="new-game-btn">生成新题目</button>
+    <button id="show-all-btn">显示全部答案</button>
+    <button id="submit-btn">提交答案</button>
+    <button id="reset-btn">清空答案</button>
+    <button id="next-group-btn" style="display:none;">下一组</button>
+  </div>
+
+  <div class="cards-container" id="cards-container"></div>
+  <div class="result-container" id="result-container"></div>
+  
+  <!-- WebSocket社交功能 -->
+  <div class="social-features">
+    <!-- 活动流 -->
+    <div class="activity-container">
+      <h3>🌟 同伴活动</h3>
+      <div id="activity-stream">
+        <div class="peer-activity">
+          <p>🎉 欢迎来到学习社区！</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 排行榜 -->
+    <div class="ranking-container">
+      <h3>🏆 学习排行榜</h3>
+      <ul class="ranking-list" id="ranking-list">
+        <li class="current-user">
+          <span class="rank">--</span>
+          <span class="username">你</span>
+          <span class="score">0</span>
+        </li>
+        <!-- 更多排名项会通过JavaScript动态添加 -->
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script src="vocabulary.js"></script>
+<script src="reading.js"></script>
+<script src="app.js"></script>
+
+<!-- 自定义对话框 -->
+<div id="custom-dialog" class="custom-dialog" style="display: none;">
+  <div class="dialog-content">
+    <div class="dialog-header">
+      <h3>🎉 新的一天开始了！</h3>
+    </div>
+    <div class="dialog-body">
+      <p>是否学习今天的新单词？</p>
+    </div>
+    <div class="dialog-footer">
+      <button id="dialog-yes" class="dialog-btn yes-btn">确定</button>
+      <button id="dialog-no" class="dialog-btn no-btn">取消</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
