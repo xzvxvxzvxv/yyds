@@ -30,46 +30,11 @@ const CloudStorageService = {
     this.loadCache();
   },
   
-  // 获取资源的云存储URL
+  // 获取资源的云存储URL - 修改为优先使用本地路径
   async getResourceUrl(localPath, resourceType = 'image') {
-    // 检查是否已在缓存中
-    const cacheKey = `${resourceType}:${localPath}`;
-    if (this.config.cache.enabled) {
-      const cachedUrl = this.getFromCache(cacheKey);
-      if (cachedUrl) {
-        console.log(`从缓存获取资源URL: ${localPath}`);
-        return cachedUrl;
-      }
-    }
-    
-    // 转换本地路径到云存储路径
-    const cloudPath = this.convertLocalPathToCloudPath(localPath, resourceType);
-    
-    try {
-      // 检查资源是否已存在于云存储
-      const exists = await this.checkResourceExists(cloudPath, resourceType);
-      
-      if (exists) {
-        // 资源已存在，直接返回URL
-        const resourceUrl = this.constructResourceUrl(cloudPath, resourceType);
-        // 存入缓存
-        this.saveToCache(cacheKey, resourceUrl);
-        return resourceUrl;
-      } else {
-        // 资源不存在，尝试上传（模拟环境下使用本地路径作为回退）
-        console.log(`云存储中未找到资源: ${localPath}，使用本地路径作为回退`);
-        // 在实际环境中，这里应该调用上传API
-        // await this.uploadResource(localPath, cloudPath, resourceType);
-        // return this.constructResourceUrl(cloudPath, resourceType);
-        
-        // 模拟环境下，返回本地路径
-        return localPath;
-      }
-    } catch (error) {
-      console.error(`获取云存储资源URL失败: ${error.message}`);
-      // 出错时返回本地路径作为回退
-      return localPath;
-    }
+    // 直接返回本地路径，避免网络请求失败
+    console.log(`使用本地图片路径: ${localPath}`);
+    return localPath;
   },
   
   // 转换本地路径到云存储路径

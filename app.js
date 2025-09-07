@@ -15,6 +15,116 @@ let currentGroupIndex = 0;
 // 透明占位符 (1x1 像素透明图片的 base64 编码)
 const TRANSPARENT_PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJwYXR0ZXJuIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48bGluZSB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSIgc3Ryb2tlPSIjZmZmZmZmMCIgc3Ryb2tlLXdpZHRoPSIxIi8+PGxpbmUgeDE9IjAiIHkxPSIxIiB4Mj0iMSIgeTI9IjAiIHN0cm9rZT0iI2ZmZmZmZjAiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjEiIGhlaWdodD0iMSIgZmlsbD0idXJsKCNwYXR0ZXJuKSIvPjwvc3ZnPg==';
 
+// 模糊占位符 (低质量模糊版本的占位符)
+const BLURRY_PLACEHOLDER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZmlsdGVyIGlkPSJhIiB4PSIwIiB5PSIwIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iLjc1IiBzdGl0Y2hUaWxlcz0ic3RpdGNoIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiBmaWx0ZXI9InVybCgjYSkiIG9wYWNpdHk9Ii4yIi8+PC9zdmc+';
+
+// 全局图片缓存机制
+const imageCache = new Map();
+// 缓存统计信息
+const cacheStats = {
+  hits: 0,
+  misses: 0,
+  totalSize: 0
+};
+
+// 图片尺寸限制（字节），超过此大小的图片会被优先清理
+const MAX_IMAGE_SIZE = 500 * 1024; // 500KB
+// 缓存最大容量（字节）
+const MAX_CACHE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// 检查图片是否在缓存中
+function checkImageInCache(imagePath) {
+  return imageCache.has(imagePath);
+}
+
+// 将图片添加到缓存
+function addImageToCache(imagePath, imageData) {
+  // 检查是否已存在
+  if (imageCache.has(imagePath)) {
+    return;
+  }
+  
+  // 计算图片大小（这里使用简单估算，实际应用中可以从响应头获取）
+  const imageSize = estimateImageSize(imagePath);
+  
+  // 确保缓存大小不会超过限制
+  ensureCacheSize(imageSize);
+  
+  // 添加到缓存
+  imageCache.set(imagePath, {
+    data: imageData,
+    timestamp: Date.now(),
+    size: imageSize
+  });
+  
+  // 更新缓存统计
+  cacheStats.totalSize += imageSize;
+}
+
+// 估算图片大小（基于URL扩展名和字符长度）
+function estimateImageSize(imagePath) {
+  // 简单估算：基于扩展名和URL长度
+  const extension = imagePath.split('.').pop().toLowerCase();
+  const urlLength = imagePath.length;
+  
+  // 不同格式的平均大小估算（字节）
+  const formatMultipliers = {
+    'png': 2, // PNG图片通常较大
+    'jpg': 1.5, // JPG中等
+    'jpeg': 1.5,
+    'gif': 1.8,
+    'svg': 0.5 // SVG通常较小
+  };
+  
+  const multiplier = formatMultipliers[extension] || 1;
+  return urlLength * 1024 * multiplier; // 简单估算
+}
+
+// 确保缓存大小不会超过限制
+function ensureCacheSize(requiredSize) {
+  // 如果添加新图片后会超出缓存限制，则清理旧的或大的图片
+  while (cacheStats.totalSize + requiredSize > MAX_CACHE_SIZE && imageCache.size > 0) {
+    // 找出最旧的或大于最大尺寸的图片
+    let oldestPath = null;
+    let oldestTime = Infinity;
+    let largestPath = null;
+    let largestSize = 0;
+    
+    for (const [path, data] of imageCache.entries()) {
+      // 记录最旧的图片
+      if (data.timestamp < oldestTime) {
+        oldestTime = data.timestamp;
+        oldestPath = path;
+      }
+      
+      // 记录最大的图片
+      if (data.size > largestSize) {
+        largestSize = data.size;
+        largestPath = path;
+      }
+    }
+    
+    // 优先清理大于最大尺寸的图片，否则清理最旧的图片
+    const pathToRemove = largestSize > MAX_IMAGE_SIZE ? largestPath : oldestPath;
+    
+    if (pathToRemove) {
+      const removedData = imageCache.get(pathToRemove);
+      cacheStats.totalSize -= removedData.size;
+      imageCache.delete(pathToRemove);
+      console.log(`从缓存中移除图片: ${pathToRemove}, 大小: ${Math.round(removedData.size / 1024)}KB`);
+    }
+  }
+}
+
+// 获取缓存统计信息
+function getCacheStats() {
+  return {
+    ...cacheStats,
+    entries: imageCache.size,
+    sizeMB: Math.round(cacheStats.totalSize / (1024 * 1024) * 100) / 100
+  };
+}
+
 // 初始化所有服务
 function initAllServices() {
   // 初始化推荐系统
@@ -345,6 +455,10 @@ function saveErrorWords() {
 
 // 设置图片懒加载
 let lazyLoadObserver = null;
+// 限制同时加载的图片数量，避免资源竞争
+const MAX_CONCURRENT_LOADS = 3;
+let currentLoadingCount = 0;
+const loadingQueue = [];
 
 function setupLazyLoading() {
   // 检查浏览器是否支持 IntersectionObserver
@@ -366,32 +480,26 @@ function setupLazyLoading() {
               // 标记为已观察
               img.classList.add('observed');
               
-              // 加载真实图片
-              img.src = src;
-              // 移除占位符属性
-              img.removeAttribute('data-src');
-              // 停止观察这个元素
-              observer.unobserve(img);
+              // 将图片添加到加载队列
+              loadingQueue.push({
+                img: img,
+                src: src,
+                observer: observer
+              });
               
-              // 加载完成后处理
-              img.onload = function() {
-                this.classList.add('loaded');
-                if (this.classList.contains('loading')) {
-                  this.classList.remove('loading');
-                }
-              };
-              
-              // 加载失败时的处理
-              img.onerror = function() {
-                handleImageError(this);
-              };
+              // 处理加载队列
+              processImageLoadingQueue();
             }
           }
         });
       }, {
-        // 配置观察器选项
-        rootMargin: '0px 0px 200px 0px', // 提前200px开始加载
-        threshold: 0.1
+        // 优化配置：增加rootMargin以提前加载更多内容
+        rootMargin: '0px 0px 400px 0px', // 提前400px开始加载
+        threshold: 0.05, // 只要元素5%可见就开始加载
+        // 使用低优先级以减少对主要内容的影响
+        root: null,
+        trackVisibility: true,
+        delay: 100 // 延迟检查以减少不必要的回调
       });
     }
     
@@ -413,19 +521,14 @@ function setupLazyLoading() {
         if (isInViewport(img)) {
           const src = img.dataset.src;
           if (src) {
-            img.src = src;
-            img.removeAttribute('data-src');
+            // 添加到加载队列
+            loadingQueue.push({
+              img: img,
+              src: src
+            });
             
-            img.onload = function() {
-              this.classList.add('loaded');
-              if (this.classList.contains('loading')) {
-                this.classList.remove('loading');
-              }
-            };
-            
-            img.onerror = function() {
-              handleImageError(this);
-            };
+            // 处理加载队列
+            processImageLoadingQueue();
           }
         }
       });
@@ -451,7 +554,124 @@ function setupLazyLoading() {
   }
 }
 
-// 预加载关键图片
+// 处理图片加载队列，限制并发加载数量
+function processImageLoadingQueue() {
+  // 如果当前加载数量小于最大并发数，且队列不为空，则继续加载
+  while (currentLoadingCount < MAX_CONCURRENT_LOADS && loadingQueue.length > 0) {
+    const item = loadingQueue.shift();
+    loadImageWithPlaceholder(item);
+  }
+}
+
+// 使用模糊占位符渐进式加载图片
+function loadImageWithPlaceholder(item) {
+  const { img, src, observer } = item;
+  
+  // 增加当前加载计数
+  currentLoadingCount++;
+  
+  // 先设置模糊占位符
+  img.src = BLURRY_PLACEHOLDER;
+  
+  // 检查图片是否在缓存中
+  if (checkImageInCache(src)) {
+    console.log(`从缓存加载图片: ${src}`);
+    cacheStats.hits++;
+    
+    // 直接使用缓存的图片数据
+    const cachedImageData = imageCache.get(src).data;
+    
+    // 设置图片源
+    img.src = cachedImageData || src;
+    
+    // 加载完成后的处理
+    img.onload = function() {
+      this.classList.add('loaded');
+      if (this.classList.contains('loading')) {
+        this.classList.remove('loading');
+      }
+      
+      // 如果有观察器，停止观察
+      if (observer) {
+        observer.unobserve(img);
+      }
+      
+      // 减少当前加载计数并处理下一个图片
+      currentLoadingCount--;
+      processImageLoadingQueue();
+    };
+    
+    // 图片加载失败的处理
+    img.onerror = function() {
+      handleImageError(this);
+      
+      // 减少当前加载计数并处理下一个图片
+      currentLoadingCount--;
+      processImageLoadingQueue();
+    };
+  } else {
+    // 图片不在缓存中，进行正常加载
+    cacheStats.misses++;
+    
+    // 创建一个临时图像对象用于预加载
+    const tempImg = new Image();
+    
+    // 监听图像加载完成事件
+    tempImg.onload = function() {
+      // 将图片添加到缓存
+      addImageToCache(src, src); // 在实际应用中，这里可以存储data URL或其他格式
+      
+      // 图片加载完成后，替换为实际图片
+      img.src = src;
+      
+      // 加载完成后的处理
+      img.onload = function() {
+        this.classList.add('loaded');
+        if (this.classList.contains('loading')) {
+          this.classList.remove('loading');
+        }
+        
+        // 如果有观察器，停止观察
+        if (observer) {
+          observer.unobserve(img);
+        }
+        
+        // 减少当前加载计数并处理下一个图片
+        currentLoadingCount--;
+        processImageLoadingQueue();
+      };
+      
+      // 图片加载失败的处理
+      img.onerror = function() {
+        handleImageError(this);
+        
+        // 减少当前加载计数并处理下一个图片
+        currentLoadingCount--;
+        processImageLoadingQueue();
+      };
+    };
+    
+    // 监听图像加载失败事件
+    tempImg.onerror = function() {
+      handleImageError(img);
+      
+      // 减少当前加载计数并处理下一个图片
+      currentLoadingCount--;
+      processImageLoadingQueue();
+    };
+    
+    // 开始加载实际图片
+    tempImg.src = src;
+  }
+  
+  // 定期打印缓存统计信息（每加载10张图片）
+  if ((cacheStats.hits + cacheStats.misses) % 10 === 0) {
+    const stats = getCacheStats();
+    console.log(`图片缓存统计: 命中率 ${Math.round(stats.hits / (stats.hits + stats.misses) * 100)}%, 缓存项 ${stats.entries}, 缓存大小 ${stats.sizeMB}MB`);
+  }
+}
+
+// 预加载关键图片 - 优化版（支持缓存）
 function preloadCriticalImages() {
   if (!currentWords || currentWords.length === 0) {
     console.log('没有需要预加载的单词图片');
@@ -459,47 +679,138 @@ function preloadCriticalImages() {
   }
   
   try {
-    // 获取前5个单词的图片路径（或者更少，如果总数量不足5个）
-    const criticalImages = currentWords.slice(0, 5);
+    // 增加预加载数量到10个，以覆盖更多可见区域内容
+    const preloadCount = Math.min(10, currentWords.length);
+    const criticalImages = currentWords.slice(0, preloadCount);
     
-    // 遍历关键图片并预加载
-    criticalImages.forEach(word => {
-      try {
-        // 如果word本身就是一个单词对象
-        let chinese = word.chinese;
-        let category = word.category;
-        
-        // 检查word的结构，可能需要根据不同模式调整
-        if (word.word) {
-          // 复习模式下，word是一个包含word属性的对象
-          chinese = word.word.chinese;
-          category = word.word.category;
-        }
-        
-        if (chinese && category) {
-          const imagePath = getWordImagePath(chinese, category);
-          
-          // 创建一个新的Image对象进行预加载
-          const img = new Image();
-          img.src = imagePath;
-          
-          // 预加载完成的回调
-          img.onload = function() {
-            console.log(`预加载图片成功: ${imagePath}`);
-          };
-          
-          // 预加载失败的回调
-          img.onerror = function() {
-            console.warn(`预加载图片失败: ${imagePath}`);
-          };
-        }
-      } catch (error) {
-        console.error(`预加载单词图片时出错: ${error.message}`);
-      }
+    // 创建预加载队列
+    const preloadPromises = [];
+    
+    // 遍历关键图片并添加到预加载队列
+    criticalImages.forEach((word, index) => {
+      // 为预加载添加延时，避免同时请求过多资源
+      const delay = index * 100; // 每100ms加载一个图片
+      
+      const preloadPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          try {
+            // 如果word本身就是一个单词对象
+            let chinese = word.chinese;
+            let category = word.category;
+            
+            // 检查word的结构，可能需要根据不同模式调整
+            if (word.word) {
+              // 复习模式下，word是一个包含word属性的对象
+              chinese = word.word.chinese;
+              category = word.word.category;
+            }
+            
+            if (chinese && category) {
+              const imagePath = getWordImagePath(chinese, category);
+              
+              // 首先检查图片是否已经在缓存中
+              if (checkImageInCache(imagePath)) {
+                console.log(`图片已在缓存中，跳过预加载: ${imagePath}`);
+                cacheStats.hits++;
+                resolve(true);
+                return;
+              }
+              
+              // 图片不在缓存中，进行预加载
+              cacheStats.misses++;
+              
+              // 创建一个新的Image对象进行预加载
+              const img = new Image();
+              
+              // 使用Image.decode()方法异步解码图片，避免阻塞主线程
+              if (img.decode) {
+                img.src = imagePath;
+                
+                // 先加载低质量图片作为占位符
+                const lowQualityImg = new Image();
+                lowQualityImg.src = imagePath;
+                
+                // 优先加载低质量图片
+                lowQualityImg.onload = function() {
+                  // 使用decode方法异步解码高质量图片
+                  img.decode().then(() => {
+                    // 将图片添加到缓存
+                    addImageToCache(imagePath, imagePath);
+                    console.log(`预加载图片成功: ${imagePath}`);
+                    resolve(true);
+                  }).catch(error => {
+                    console.warn(`预加载图片解码失败: ${imagePath}`, error);
+                    // 解码失败时使用普通加载
+                    loadFallbackImage(imagePath, resolve);
+                  });
+                };
+                
+                lowQualityImg.onerror = function() {
+                  console.warn(`预加载低质量图片失败: ${imagePath}`);
+                  // 低质量加载失败时使用普通加载
+                  loadFallbackImage(imagePath, resolve);
+                };
+              } else {
+                // 对于不支持decode的浏览器，使用传统方式
+                loadFallbackImage(imagePath, resolve);
+              }
+            } else {
+              resolve(false);
+            }
+          } catch (error) {
+            console.error(`预加载单词图片时出错: ${error.message}`);
+            resolve(false);
+          }
+        }, delay);
+      });
+      
+      preloadPromises.push(preloadPromise);
+    });
+    
+    // 等待所有预加载完成
+    Promise.all(preloadPromises).then(results => {
+      const successCount = results.filter(Boolean).length;
+      console.log(`成功预加载 ${successCount}/${preloadCount} 个关键图片`);
+      
+      // 打印缓存统计信息
+      const stats = getCacheStats();
+      console.log(`图片缓存统计: 命中率 ${Math.round(stats.hits / (stats.hits + stats.misses) * 100)}%, 缓存项 ${stats.entries}, 缓存大小 ${stats.sizeMB}MB`);
     });
   } catch (error) {
     console.error(`预加载关键图片时出错: ${error.message}`);
   }
+}
+
+// 备用图片加载函数，用于不支持decode的浏览器
+function loadFallbackImage(imagePath, resolve) {
+  // 检查图片是否在缓存中
+  if (checkImageInCache(imagePath)) {
+    console.log(`从缓存加载图片(备用方式): ${imagePath}`);
+    cacheStats.hits++;
+    resolve(true);
+    return;
+  }
+  
+  const img = new Image();
+  
+  // 预加载完成的回调
+  img.onload = function() {
+    // 将图片添加到缓存
+    addImageToCache(imagePath, imagePath);
+    cacheStats.misses++;
+    
+    console.log(`备用方式预加载图片成功: ${imagePath}`);
+    resolve(true);
+  };
+  
+  // 预加载失败的回调
+  img.onerror = function() {
+    console.warn(`备用方式预加载图片失败: ${imagePath}`);
+    resolve(false);
+  };
+  
+  // 设置图片源
+  img.src = imagePath;
 }
 
 // 检查是否需要显示每日新单词提示
@@ -612,6 +923,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEvents();
   // 设置懒加载
   setupLazyLoading();
+  // 设置图片错误事件监听器
+  setupImageErrorListeners();
   
   // 检查页面加载时是否为每日推荐模式，如果是，显示提示
   if (document.getElementById('mode-selector').value === 'recommended') {
@@ -872,47 +1185,86 @@ function getWordImagePath(chinese, category) {
 
 // 初始化云存储服务
 function initCloudStorage() {
+  // 创建本地缓存对象
   if (!window.cloudImageCache) {
     window.cloudImageCache = {};
   }
   
-  if (window.CloudStorageService && typeof window.CloudStorageService.init === 'function') {
-    try {
-      window.CloudStorageService.init();
-      console.log('云存储服务已初始化');
-    } catch (error) {
-      console.error('初始化云存储服务失败:', error);
-    }
-  }
+  console.log('使用本地图片路径，跳过云存储初始化');
 }
 
-// 异步预加载图片到云存储缓存
+// 异步预加载图片到全局缓存
 async function preloadImagesForWords(words) {
-  if (!window.CloudStorageService || typeof window.CloudStorageService.getResourceUrl !== 'function') {
+  if (!words || !Array.isArray(words)) {
+    console.warn('preloadImagesForWords: words参数无效');
     return;
   }
   
   try {
-    const preloadPromises = words.map(async word => {
-      const localImagePath = getWordImagePath(word.chinese, word.category);
-      
-      // 如果已经在缓存中，跳过
-      if (window.cloudImageCache[localImagePath]) {
-        return;
-      }
-      
-      try {
-        const cloudUrl = await window.CloudStorageService.getResourceUrl(localImagePath, 'image');
-        window.cloudImageCache[localImagePath] = cloudUrl;
-      } catch (error) {
-        console.error(`预加载图片失败: ${localImagePath}`, error);
-        window.cloudImageCache[localImagePath] = localImagePath;
-      }
-    });
+    // 过滤出有效的单词对象
+    const validWords = words.filter(word => word && word.chinese && word.category);
     
-    // 并行预加载所有图片
-    await Promise.allSettled(preloadPromises);
-    console.log(`成功预加载 ${words.length} 个单词的图片资源`);
+    if (validWords.length === 0) {
+      console.log('没有有效的单词对象用于预加载图片');
+      return;
+    }
+    
+    // 创建预加载队列，每5张图片为一组进行加载，避免一次性请求过多资源
+    const BATCH_SIZE = 5;
+    let loadedCount = 0;
+    
+    for (let i = 0; i < validWords.length; i += BATCH_SIZE) {
+      const batch = validWords.slice(i, i + BATCH_SIZE);
+      
+      const batchPromises = batch.map(word => {
+        return new Promise(resolve => {
+          const localImagePath = getWordImagePath(word.chinese, word.category);
+          
+          // 检查图片是否已经在缓存中
+          if (checkImageInCache(localImagePath)) {
+            console.log(`图片已在缓存中，跳过预加载: ${localImagePath}`);
+            cacheStats.hits++;
+            loadedCount++;
+            resolve(true);
+            return;
+          }
+          
+          // 图片不在缓存中，进行预加载
+          const img = new Image();
+          
+          img.onload = function() {
+            // 将图片添加到缓存
+            addImageToCache(localImagePath, localImagePath);
+            cacheStats.misses++;
+            loadedCount++;
+            console.log(`成功预加载单词图片: ${word.chinese}`);
+            resolve(true);
+          };
+          
+          img.onerror = function() {
+            console.warn(`预加载单词图片失败: ${localImagePath}`);
+            resolve(false);
+          };
+          
+          // 设置图片源
+          img.src = localImagePath;
+        });
+      });
+      
+      // 等待当前批次加载完成
+      await Promise.allSettled(batchPromises);
+      
+      // 批次之间添加短暂延迟，避免连续请求
+      if (i + BATCH_SIZE < validWords.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+    
+    console.log(`成功预加载 ${loadedCount}/${validWords.length} 个单词的图片资源`);
+    
+    // 打印缓存统计信息
+    const stats = getCacheStats();
+    console.log(`图片缓存统计: 命中率 ${Math.round(stats.hits / (stats.hits + stats.misses) * 100)}%, 缓存项 ${stats.entries}, 缓存大小 ${stats.sizeMB}MB`);
   } catch (error) {
     console.error('批量预加载图片失败:', error);
   }
@@ -1107,6 +1459,53 @@ function handleImageError(event) {
       console.error('备用错误处理也失败:', fallbackError);
     }
   }
+}
+
+// 添加图片错误事件监听器
+function setupImageErrorListeners() {
+  // 为已存在的图片添加事件监听器
+  document.querySelectorAll('img').forEach(img => {
+    // 移除内联onerror属性
+    if (img.hasAttribute('onerror')) {
+      img.removeAttribute('onerror');
+    }
+    // 添加事件监听器
+    img.addEventListener('error', handleImageError);
+  });
+  
+  // 使用MutationObserver监听新添加的图片元素
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(mutation => {
+      mutation.addedNodes.forEach(node => {
+        if (node.nodeType === 1) { // 元素节点
+          // 检查当前节点是否为图片
+          if (node.tagName === 'IMG') {
+            // 移除内联onerror属性
+            if (node.hasAttribute('onerror')) {
+              node.removeAttribute('onerror');
+            }
+            // 添加事件监听器
+            node.addEventListener('error', handleImageError);
+          }
+          // 检查子节点中是否有图片
+          node.querySelectorAll('img').forEach(img => {
+            // 移除内联onerror属性
+            if (img.hasAttribute('onerror')) {
+              img.removeAttribute('onerror');
+            }
+            // 添加事件监听器
+            img.addEventListener('error', handleImageError);
+          });
+        }
+      });
+    });
+  });
+  
+  // 开始观察文档变化
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
 }
 
 function addCategoryImageStyles() {

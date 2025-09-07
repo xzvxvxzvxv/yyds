@@ -513,21 +513,48 @@ button:hover { background:#2c65b8; transform: translateY(-2px); }
   margin-bottom: 15px;
 }
 
+/* 图片加载状态样式 */
 .word-image {
   width: 180px;
   height: 180px;
   object-fit: contain;
-  background: #f8f9fa;
+  background-color: #f8f9fa;
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 8px;
   border: 2px solid #e0e0e0;
-  transition: all 0.3s ease;
+  transition: all 0.5s ease-in-out;
+  max-width: 100%;
+  display: block;
 }
 
 .word-image.loading {
-  opacity: 0.5;
-  filter: blur(2px);
+  opacity: 0.8;
+  filter: blur(8px) brightness(0.9);
+}
+
+.word-image.loaded {
+  opacity: 1;
+  filter: blur(0px) brightness(1);
+}
+
+/* 图片悬停效果 */
+.word-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 模糊占位符过渡效果 */
+img[data-src] {
+  transition: all 0.5s ease-in-out;
+  background-color: #f8f9fa;
+}
+
+/* 确保占位符图片不会因为加载延迟而导致布局跳动 */
+.vocab-image, .mini-image {
+  width: 30px;
+  height: 30px;
+  display: block;
 }
 
 /* 语音识别样式 */
